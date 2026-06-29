@@ -1,0 +1,228 @@
+<script>
+// Session check on page load
+fetch("backend.php?action=session_check")
+  .then(res => res.json())
+  .then(data => {
+    if (!data.logged_in) {
+      // Not logged in → redirect
+      window.location.href = "login.html";
+    }
+  });
+</script>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dental Clinic Autoclave Registry</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="autoclave.ico">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="container mt-4">
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+	<h2 class="mb-0">Autoclave Registry</h2>
+	<div class="d-flex gap-2">
+		<a href="report.html" class="btn btn-primary">Report</a>
+		<form method="POST" action="backend.php" class="mb-0">
+		  <input type="hidden" name="action" value="logout">
+		  <button type="submit" class="btn btn-warning">Logout</button>
+		</form>
+	</div>
+</div>
+
+<!-- Autoclave Dropdown -->
+<div class="mb-3">
+  <label class="form-label">Select Autoclave</label>
+  <select id="autoclaveSelect" class="form-select"></select>
+</div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs" id="autoclaveTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="registry-tab" data-bs-toggle="tab" data-bs-target="#registry" type="button" role="tab">Registry</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="bio-tab" data-bs-toggle="tab" data-bs-target="#bio" type="button" role="tab">Biological Test</button>
+    </li>
+  </ul>
+
+  <div class="tab-content mt-3">
+    <!-- Registry Tab -->
+    <div class="tab-pane fade show active" id="registry" role="tabpanel">
+      <div class="mb-3">
+        <button id="startBtn" class="btn btn-primary">Start Cycle</button>
+        <button id="endBtn" class="btn btn-secondary">End Cycle</button>
+        <button id="successBtn" class="btn btn-success">Success</button>
+        <button id="failBtn" class="btn btn-danger">Fail</button>
+      </div>
+
+      <div id="errorReasonDiv" class="mb-3" style="display:none;">
+        <label class="form-label">Error Reason</label>
+        <input type="text" id="errorReason" class="form-control">
+        <button id="confirmFailBtn" class="btn btn-danger mt-2">Confirm Fail</button>
+      </div>
+
+      <div id="cycleStatus" class="mt-3 alert alert-info"></div>
+    </div>
+
+    <!-- Biological Test Tab -->
+	<div class="tab-pane fade" id="bio" role="tabpanel">
+	  <form id="bioForm" class="row g-3">
+		<input type="hidden" name="action" value="save_test">
+		<input type="hidden" name="autoclave_id" id="bioAutoclaveId">
+		<div class="col-md-6">
+		  <label class="form-label">Test Date/Time</label>
+		  <input type="datetime-local" name="test_datetime" id="testDatetime" class="form-control" required>
+		</div>
+		<div class="col-md-6">
+		  <label class="form-label">Result</label>
+		  <select name="result" class="form-select">
+			<option value="Pass">Pass</option>
+			<option value="Fail">Fail</option>
+		  </select>
+		</div>
+		<div class="col-md-12">
+		  <label class="form-label">Notes</label>
+		  <textarea name="notes" class="form-control">Weekly biological test passed</textarea>
+		</div>
+		<div class="col-12">
+		  <button type="submit" class="btn btn-success">Save Test Result</button>
+		</div>
+	  </form>
+	</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const autoclaveSelect = document.getElementById('autoclaveSelect');
+	const bioAutoclaveId = document.getElementById('bioAutoclaveId');
+    const cycleStatus = document.getElementById('cycleStatus');
+    const startBtn = document.getElementById('startBtn');
+    const endBtn = document.getElementById('endBtn');
+    const successBtn = document.getElementById('successBtn');
+    const failBtn = document.getElementById('failBtn');
+    const errorDiv = document.getElementById('errorReasonDiv');
+    const confirmFailBtn = document.getElementById('confirmFailBtn');
+    const bioForm = document.getElementById('bioForm');
+
+    function sendRequest(action, extraData={}) {
+      const data = new URLSearchParams({action: action, autoclave_id: autoclaveSelect.value, ...extraData});
+      fetch("backend.php", {method: "POST", body: data})
+        .then(res => res.text())
+        .then(txt => {
+          cycleStatus.textContent = txt;
+          setTimeout(updateButtons, 1000);
+        });
+    }
+
+    function updateButtons() {
+      fetch("backend.php?action=get_status&autoclave_id=" + autoclaveSelect.value)
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "Running") {
+            cycleStatus.textContent = `Autoclave ${autoclaveSelect.value} running since ${data.start_time}`;
+            startBtn.disabled = true;
+            endBtn.disabled = false;
+            successBtn.disabled = true;
+            failBtn.disabled = true;
+          } else if (data.status === "Completed") {
+            cycleStatus.textContent = `Autoclave ${autoclaveSelect.value} last completed at ${data.end_time}`;
+            startBtn.disabled = false;
+            endBtn.disabled = true;
+            successBtn.disabled = false;
+            failBtn.disabled = false;
+          } else {
+            cycleStatus.textContent = `Autoclave ${autoclaveSelect.value} is idle`;
+            startBtn.disabled = false;
+            endBtn.disabled = true;
+            successBtn.disabled = true;
+            failBtn.disabled = true;
+          }
+        });
+    }
+
+	function loadAutoclaves() {
+	  fetch("backend.php?action=get_autoclaves")
+		.then(res => res.json())
+		.then(data => {
+		  const select = document.getElementById("autoclaveSelect");
+		  select.innerHTML = ""; // clear old options
+		  data.forEach(auto => {
+			const opt = document.createElement("option");
+			opt.value = auto.id;
+			opt.textContent = auto.name;
+			select.appendChild(opt);
+		  });
+		  bioAutoclaveId.value = select.value;
+		  updateButtons();
+		})
+		.catch(err => console.error("Error loading autoclaves:", err));
+	}
+
+	// Call on page load
+	document.addEventListener("DOMContentLoaded", () => {
+	loadAutoclaves();
+	  const resultEl = document.querySelector("#bioForm select[name='result']");
+	  const notesEl  = document.querySelector("#bioForm textarea[name='notes']");
+
+	  resultEl.addEventListener("change", () => {
+		if (resultEl.value === "Pass") {
+		  notesEl.value = "Weekly biological test passed";
+		  notesEl.blur(); // optional: remove focus
+		} else if (resultEl.value === "Fail") {
+		  notesEl.value = "";
+		  notesEl.focus(); // put cursor in Notes for manual entry
+		} else {
+		  notesEl.value = "";
+		}
+	  });
+	});
+
+	autoclaveSelect.addEventListener('change', function() {
+	  bioAutoclaveId.value = this.value;
+	  updateButtons();
+	});
+
+    startBtn.addEventListener('click', () => sendRequest('start_cycle'));
+    endBtn.addEventListener('click', () => sendRequest('end_cycle'));
+    successBtn.addEventListener('click', () => sendRequest('cycle_result', {result: 'Pass'}));
+    failBtn.addEventListener('click', () => errorDiv.style.display = 'block');
+    confirmFailBtn.addEventListener('click', () => {
+      const reason = document.getElementById('errorReason').value;
+      sendRequest('cycle_result', {result: 'Fail', error_message: reason});
+      errorDiv.style.display = 'none';
+    });
+
+	document.getElementById("testDatetime").addEventListener("focus", function() {
+	  const now = new Date();
+
+	  const year = now.getFullYear();
+	  const month = String(now.getMonth() + 1).padStart(2, '0');
+	  const day = String(now.getDate()).padStart(2, '0');
+	  const hours = String(now.getHours()).padStart(2, '0');
+	  const minutes = String(now.getMinutes()).padStart(2, '0');
+
+	  this.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+	});
+
+	bioForm.addEventListener('submit', e => {
+	  e.preventDefault();
+	  fetch("backend.php", {method: "POST", body: new FormData(bioForm)})
+		.then(res => res.text())
+		.then(txt => {
+		  const msgDiv = document.createElement("div");
+		  msgDiv.className = "alert alert-info mt-2";
+		  msgDiv.textContent = txt;
+		  bioForm.appendChild(msgDiv);
+
+		  bioForm.reset(); // clear datetime, result, notes
+
+		  setTimeout(() => msgDiv.remove(), 4000);
+		});
+	});
+  </script>
+</body>
+</html>

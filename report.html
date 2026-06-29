@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Autoclave Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="autoclave.ico">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+	.type-cell.cycle-type { 
+		background-color: #e3f2fd; /* light blue */ 
+		font-weight: bold; 
+	}
+    .type-cell.bio-type { 
+		background-color: #fce4ec; /* light pink */  
+		font-weight: bold;
+    }
+    .status-pass {
+		color: green;
+		font-size: 1.2em;
+    }
+    .status-fail {
+		color: red;
+		font-size: 1.2em;
+    }
+	#reportArea {
+	  max-height: calc(100vh - 200px); /* fills most of the viewport */
+	  overflow-y: auto;
+	  border: 1px solid #ddd;
+	  border-radius: 6px;
+	  padding: 10px;
+	  background-color: #fff;
+	}
+
+  </style>
+</head>
+<body class="container mt-4">
+
+	<div class="d-flex justify-content-between align-items-center mb-4">
+		<h2 class="mb-0">Autoclave Combined Report</h2>
+		<div class="d-flex gap-2">
+			<button id="refreshBtn" class="btn btn-secondary  mb-0">Refresh</button>
+			<a href="index.html" class="btn btn-primary">Registry</a>
+			<form method="POST" action="backend.php" class="mb-0">
+			  <input type="hidden" name="action" value="logout">
+			  <button type="submit" class="btn btn-warning">Logout</button>
+			</form>
+		</div>
+	</div>
+
+	<!-- Autoclave Dropdown -->
+	<div class="mb-3">
+	  <label class="form-label">Select Autoclave</label>
+	  <select id="autoclaveSelect" class="form-select"></select>
+	</div>
+
+	<!-- Date inputs -->
+	<div class="row mb-3">
+	  <div class="col">
+		<label class="form-label">Start Date</label>
+		<input type="date" id="startDate" class="form-control">
+	  </div>
+	  <div class="col">
+		<label class="form-label">End Date</label>
+		<input type="date" id="endDate" class="form-control">
+	  </div>
+	</div>
+
+	<div id="reportArea" class="mt-3"></div>
+
+	<div class="modal fade" id="editModal" tabindex="-1">
+	<div class="modal-dialog">
+	  <div class="modal-content">
+		<form id="editForm" method="POST" action="backend.php">
+		  <div class="modal-header">
+			<h5 class="modal-title">Edit Record</h5>
+			<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+		  </div>
+		  <div class="modal-body">
+			<input type="hidden" name="action" value="update_record">
+			<input type="hidden" name="id" id="editId">
+			<input type="hidden" name="user_id" id="editUserId">
+			<input type="hidden" name="type" id="editType">
+
+			<div class="mb-3">
+			  <label class="form-label">Status</label>
+			  <select name="status" id="editStatus" class="form-select">
+				<option value="Pass">Pass</option>
+				<option value="Fail">Fail</option>
+			  </select>
+			</div>
+			<div class="mb-3">
+			  <label class="form-label">Notes</label>
+			  <textarea name="notes" id="editNotes" class="form-control"></textarea>
+			</div>
+		  </div>
+		  <div class="modal-footer">
+			<button type="submit" class="btn btn-primary">Save Changes</button>
+		  </div>
+		</form>
+	  </div>
+	</div>
+	</div>
+
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script> 
+	<script>
+		let CURRENT_USER_ID = null;
+		fetch("backend.php?action=session_check")
+		  .then(res => res.json())
+		  .then(data => {
+			if (!data.logged_in) {
+			  window.location.href = "login.html";
+			} else {
+			  CURRENT_USER_ID = data.user_id;
+			}
+		});
+
+		const autoclaveSelect = document.getElementById('autoclaveSelect');
+		const reportArea = document.getElementById('reportArea');
+		const refreshBtn = document.getElementById('refreshBtn');
+		const editModalEl = document.getElementById('editModal');
+		const editModal = new bootstrap.Modal(editModalEl);
+
+		function openEditModal(id, type) {
+		  fetch(`backend.php?action=get_record&id=${id}&type=${type}`)
+			.then(res => res.json())
+			.then(data => {
+			  const record = Array.isArray(data) ? data[0] : data;
+			  document.getElementById('editNotes').value = record.notes || "";
+			  document.getElementById('editStatus').value = record.status || "";
+			  document.getElementById('editId').value = record.id;
+			  document.getElementById('editType').value = record.type;
+			  document.getElementById('editUserId').value = CURRENT_USER_ID;
+			  editModal.show(); // reuse instance
+			});
+		}
+
+		function loadReport() {
+			const startDate = document.getElementById("startDate").value;
+			const endDate = document.getElementById("endDate").value;
+
+			const params = new URLSearchParams({
+			action: "get_report",
+			autoclave_id: autoclaveSelect.value,
+			start_date: startDate,
+			end_date: endDate
+			});		
+			fetch("backend.php?" + params.toString())		
+			  .then(res => res.json())
+			  .then(data => {
+				let html = "<table class='table table-bordered'>";
+				html += "<thead><tr>" +
+						"<th>Type</th>" +
+						"<th>Start Time</th>" +
+						"<th>Started By</th>" +
+						"<th>End Time</th>" +
+						"<th>Ended By</th>" +
+						"<th>Result</th>" +
+						"<th>Result By</th>" +
+						"<th>Result Time</th>" +
+						"<th>Error/Notes</th>" +
+						"<th></th>" +
+						"</tr></thead><tbody>";
+
+				data.forEach(row => {
+					let statusHtml = "";
+					let cls = "";
+					if (row.status === "Pass") {
+					  statusHtml = "<span class='status-pass'>&#10004;</span>"; // green tick
+					  cls = "table-success";
+					} else if (row.status === "Fail") {
+					  statusHtml = "<span class='status-fail'>&#10008;</span>"; // red cross
+					  cls = "table-danger";
+					} else {
+					  statusHtml = row.status || "";
+					  cls = row.status || "";
+					}
+
+					html += `<tr>
+							  <td class="type-cell ${row.type === 'Cycle' ? 'cycle-type' : 'bio-type'}">${row.type}</td>
+							  <td>${row.start_time}</td>
+							  <td>${row.started_by}</td>
+							  <td>${row.end_time}</td>
+							  <td>${row.ended_by}</td>
+							  <td class='${cls}'>${statusHtml}</td>
+							  <td class='${cls}'>${row.result_by}</td>
+							  <td class='${cls}'>${row.result_datetime || ""}</td>
+							  <td>${row.notes}</td>
+							  <td><button class="btn btn-sm btn-info editBtn" data-id="${row.id}" data-type="${row.type}">Edit</button></td>
+							</tr>`;
+				});
+
+				html += "</tbody></table>";
+				reportArea.innerHTML = html;
+			});
+			document.addEventListener('click', function(e) {
+			  if (e.target.classList.contains('editBtn')) {
+				const recordId = e.target.dataset.id;
+				const recordType = e.target.dataset.type;
+				openEditModal(recordId, recordType);
+			  }
+			});
+		}
+
+		function loadAutoclaves() {
+		  fetch("backend.php?action=get_autoclaves")
+			.then(res => res.json())
+			.then(data => {
+			  const select = document.getElementById("autoclaveSelect");
+			  select.innerHTML = ""; // clear old options
+			  data.forEach(auto => {
+				const opt = document.createElement("option");
+				opt.value = auto.id;
+				opt.textContent = auto.name;
+				select.appendChild(opt);
+			  });
+			  loadReport();
+			})
+			.catch(err => console.error("Error loading autoclaves:", err));
+		}
+		
+		// Handle modal form submission
+		document.getElementById('editForm').addEventListener('submit', async function(e) {
+		  e.preventDefault();
+		  const formData = new FormData(this);
+		  const res = await fetch("backend.php", {method:"POST", body:formData});
+		  const txt = await res.text();
+
+		  if (txt.includes("Update successful")) {
+			editModal.hide(); 
+			loadReport();     // refresh table
+		  }
+		});
+
+		document.addEventListener("DOMContentLoaded", () => {
+			// Load autoclaves
+			loadAutoclaves();
+
+			// Set default date filter values
+			const startDateEl = document.getElementById("startDate");
+			const endDateEl = document.getElementById("endDate");
+
+			const now = new Date();
+
+			// End date = today (local)
+			const endYear = now.getFullYear();
+			const endMonth = String(now.getMonth() + 1).padStart(2, '0');
+			const endDay = String(now.getDate()).padStart(2, '0');
+			endDateEl.value = `${endYear}-${endMonth}-${endDay}`;
+
+			// Start date = first day of 3 months ago (local)
+			const start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+			const startYear = start.getFullYear();
+			const startMonth = String(start.getMonth() + 1).padStart(2, '0');
+			const startDay = String(start.getDate()).padStart(2, '0');
+			startDateEl.value = `${startYear}-${startMonth}-${startDay}`;
+		});
+		autoclaveSelect.addEventListener('change', loadReport);
+		refreshBtn.addEventListener('click', loadReport);
+
+		
+	</script>
+
+</body>
+</html>
