@@ -14,7 +14,7 @@ This project provides a web-based solution for tracking autoclave usage and ster
 
 ## 📂 File Organization
 
-- All project files should be placed in the **root directory** of your web server.
+- All project files should be placed in the **document root directory** of your web server.
 - Create a dedicated folder (e.g., `/autoclave`) to store and serve the application.
 
 ---
@@ -30,7 +30,7 @@ This project provides a web-based solution for tracking autoclave usage and ster
 ## 🚀 Getting Started
 
 1. Clone or download this repository.
-2. Place the files in your web server’s root directory under `/autoclave`.
+2. Place the files in your web server’s document root directory under `/autoclave`.
 3. Import `SQL.sql` into **phpMyAdmin**.
 4. Access the application via your browser to begin logging autoclave cycles.
 
